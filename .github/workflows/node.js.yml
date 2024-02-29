@@ -1,0 +1,65 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: Node.js CI
+
+on:
+  push:
+    branches: [ "AJKTest-Angular" ]
+  pull_request:
+    branches: [ "AJKTest-Angular" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.19.0]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    - run: npm install -g @angular/cli
+    - run: npm install -g npm
+    - run: npm cache clean --force
+    - run: npm update -g
+    - run: npm config set legacy-peer-deps=true --location=project
+    - run: npm install
+    - run: npm run build
+    #- run: npm run test
+    - name: Build Docker image
+      run: docker build -t ajithdevops/image-${{github.run_number}} .
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v1
+      with:
+          username: ${{ secrets.DOCKERHUB_USERNAMES }}
+          password: ${{ secrets.DOCKERHUB_PASSWORDS }}
+
+    - name: Push Docker image to Docker Hub
+      run: docker image push ajithdevops/image-${{github.run_number}}
+
+    - name: Installation of minikube and kubectl
+      run: |
+          curl -LO 'https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl'
+          curl -LO "https://dl.k8s.io/v1.22.0/bin/linux/amd64/kubectl.sha256"
+          echo "$(<kubectl.sha256) kubectl" | sha256sum --check
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          sudo apt-get update
+          sudo apt install conntrack
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          sudo sysctl net/netfilter/nf_conntrack_max=524288
+          minikube start
+
+    - name: Deploy into kubernetes
+      run: |
+          kubectl create deployment kubetrialdeploy --image=ajithdevops/image-${{github.run_number}}  --replicas=3
+          kubectl get deployments
+          minikube dashboard

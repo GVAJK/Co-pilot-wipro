@@ -1,3 +1,3 @@
 FROM nginx
-RUN mkdir -p ajk/team1
-COPY . ajk/team1
+RUN mkdir -p ajk
+COPY . /ajk
